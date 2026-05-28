@@ -1,16 +1,14 @@
-# Getting Started in PyCharm — DeepWeeds Edge Classifier
+# Getting Started (PyCharm) — DeepWeeds Edge Classifier
 
-A PyCharm runbook: empty repo → working result → published portfolio piece. This is **Portfolio Demo #1** and the **Phase 0 gate** for the printer purchase — once you have an accuracy result + an edge-latency number, the gate is cleared.
-
-Platform: your Mac (Apple Silicon → training uses **MPS**). Menu paths are for recent PyCharm (2024/2025); Community Edition is fine.
+A step-by-step runbook from a fresh checkout to a published result. Examples use PyCharm on macOS (Apple Silicon → training uses **MPS**), but the underlying commands work in any environment. Menu paths are for recent PyCharm (2024/2025); Community Edition is fine.
 
 ---
 
 ## Phase A — Project, interpreter, deps, sanity run (~30 min, mostly the torch download)
 
-**Before you start — confirm a base Python.** PyCharm builds the venv *from* an existing Python. In the macOS Terminal: `python3 --version`. You want **3.11 or 3.12** (Apple-Silicon/arm64). If missing, install from python.org (arm64 installer) or `brew install python@3.12`. (Avoid 3.13 for now — some wheels still lag.)
+**Before you start — confirm a base Python.** PyCharm builds the venv *from* an existing Python. In a terminal: `python3 --version`. You want **3.11 or 3.12** (Apple-Silicon/arm64). If missing, install from python.org (arm64 installer) or `brew install python@3.12`. (Avoid 3.13 for now — some wheels still lag.)
 
-1. **Open the right folder as the project.** `File → Open…` → select **`deepweeds-edge-classifier`** (the repo folder itself, *not* the parent `business_plan`). If prompted, **Trust** the project. Opening the wrong folder is the #1 cause of later `No module named 'deepweeds'` errors.
+1. **Open the project.** `File → Open…` → select the `deepweeds-edge-classifier` folder (the repo root itself). If prompted, **Trust** the project. Opening the wrong folder is the #1 cause of later `No module named 'deepweeds'` errors.
 
 2. **Create the project venv (interpreter).**
    - `PyCharm → Settings` (⌘,) → `Project: deepweeds-edge-classifier → Python Interpreter`.
@@ -31,7 +29,7 @@ Platform: your Mac (Apple Silicon → training uses **MPS**). Menu paths are for
    **If it fails:**
    - `ModuleNotFoundError: torch` → interpreter isn't the `.venv`, or deps didn't install (recheck 2–3; look at the status-bar interpreter).
    - `No module named 'deepweeds'` → wrong project root; reopen `deepweeds-edge-classifier` itself (step 1).
-   - Otherwise → paste me the Run-window output.
+   - Otherwise → inspect the Run-window traceback against the steps above.
 
 ---
 
@@ -72,7 +70,7 @@ Create a Run Configuration: `Run → Edit Configurations… → + → Python`.
 
 ## Phase D — Reproduce the paper baseline (ResNet-50)
 
-7. Duplicate the config → `train-resnet50`, Parameters: `--data-dir data/images --labels-csv data/labels.csv --arch resnet50 --epochs 15 --batch-size 32 --output-dir runs/resnet50`. Target ≈ **95%** (published baseline 95.7%). This is your "matched the benchmark" number; MobileNet is your "and made it deployable" number.
+7. Duplicate the config → `train-resnet50`, Parameters: `--data-dir data/images --labels-csv data/labels.csv --arch resnet50 --epochs 15 --batch-size 32 --output-dir runs/resnet50`. Target ≈ **95%** (published baseline 95.7%) — a direct comparison against the paper, where MobileNetV3 is the smaller, deployable counterpart.
 
 ---
 
@@ -80,20 +78,17 @@ Create a Run Configuration: `Run → Edit Configurations… → + → Python`.
 
 8. **Export config:** `+ → Python`, name `export-mnv3`, Script `export.py`, Parameters `--checkpoint runs/mnv3/best_model.pt --arch mobilenet_v3_large --output runs/mnv3/model.onnx --quantize`. Run.
 
-9. **Benchmark config:** name `benchmark-mnv3`, Script `benchmark.py`, Parameters `--onnx runs/mnv3/model.onnx --runs 200`. Run → read mean ms/frame + FPS in the Run window. **On the Mac now** = baseline; **re-run on the Pi 5 when it arrives** for the headline edge number. (The Hailo accelerator is a later optimisation needing the Hailo toolchain; ONNX-Runtime-CPU is the simple cross-platform number for v1.)
+9. **Benchmark config:** name `benchmark-mnv3`, Script `benchmark.py`, Parameters `--onnx runs/mnv3/model.onnx --runs 200`. Run → read mean ms/frame + FPS in the Run window. The same script can be re-run on a Raspberry Pi 5 for an on-device number. (A Hailo accelerator is a later optimisation needing the Hailo toolchain; ONNX-Runtime-CPU is the simple cross-platform baseline.)
 
 ---
 
 ## Phase F — Publish (PyCharm Git integration)
 
-10. View results: double-click `runs/mnv3/confusion_matrix.png` to open it in the editor; open `metrics.json` for accuracy + per-class report. Fill the README results table (model · params · accuracy · edge latency) and keep the honest scope note (ground-level classification, not aerial — see `../portfolio_demo_deepweeds.md`).
+10. View results: double-click `runs/mnv3/confusion_matrix.png` to open it in the editor; open `metrics.json` for accuracy + per-class report. Fill the README results table (model · params · accuracy · edge latency) and keep the scope note (ground-level classification, not aerial).
 11. Commit + push from PyCharm:
     - `VCS → Enable Version Control Integration… → Git` (if not already a repo).
-    - **Commit** tool window (left edge, or ⌘0): stage files, write a message, Commit. The repo's `.gitignore` already excludes `data/`, `runs/`, `*.pt`, `*.onnx`.
+    - **Commit** tool window (left edge, or ⌘0): stage files, write a message, Commit. The repo's `.gitignore` already excludes `data/`, `runs/`, `*.zip`, `*.pt`, `*.onnx`.
     - `Git → GitHub → Share Project on GitHub` (sign in under `Settings → Version Control → GitHub`), then `Git → Push` (⌘⇧K).
-12. Make it your first **pinned** repo (see `../tier1_brand_starter.md`).
-
-> **Gate check:** an accuracy result + a measured edge-latency number = **Phase 0 cleared → you can order the X2D**. The Mac-CPU number already proves the AI lands; the Pi-hardware benchmark is a strengthening follow-up.
 
 ---
 

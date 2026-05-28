@@ -1,8 +1,8 @@
 # DeepWeeds Edge Classifier
 
-Train an image classifier on the **DeepWeeds** Australian rangeland-weed dataset, then export and benchmark it on a low-cost edge device (Raspberry Pi / Jetson). The point of this project is not just accuracy — it's proving **on-device inference**, the skill that matters for AI + drone work.
+Train an image classifier on the **DeepWeeds** Australian rangeland-weed dataset, then export and benchmark it on a low-cost edge device (Raspberry Pi / Jetson). The focus isn't just accuracy — it's **on-device inference**: getting a model to run efficiently at the edge.
 
-> **Scope (be honest in interviews):** DeepWeeds is *whole-image classification* of *ground-level* photos — not aerial imagery and not object detection. This repo proves ML + edge-deployment competence on real Australian ag data. The `bridge-to-aerial` stretch goal (tile a flight frame, classify each tile into a coarse weed heatmap) is what connects it to a drone platform.
+> **Scope:** DeepWeeds is *whole-image classification* of *ground-level* photos — not aerial imagery and not object detection. This repo demonstrates image classification + edge deployment on a real Australian agricultural dataset. The `bridge-to-aerial` stretch goal (tile an aerial frame, classify each tile into a coarse weed heatmap) hints at how it could extend to a UAV platform.
 
 ## Dataset
 
