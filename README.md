@@ -1,0 +1,79 @@
+# DeepWeeds Edge Classifier
+
+Train an image classifier on the **DeepWeeds** Australian rangeland-weed dataset, then export and benchmark it on a low-cost edge device (Raspberry Pi / Jetson). The point of this project is not just accuracy — it's proving **on-device inference**, the skill that matters for AI + drone work.
+
+> **Scope (be honest in interviews):** DeepWeeds is *whole-image classification* of *ground-level* photos — not aerial imagery and not object detection. This repo proves ML + edge-deployment competence on real Australian ag data. The `bridge-to-aerial` stretch goal (tile a flight frame, classify each tile into a coarse weed heatmap) is what connects it to a drone platform.
+
+## Dataset
+
+DeepWeeds: 17,509 images, 8 weed species + 1 negative (non-weed) class, collected in situ across 8 northern-Australia rangeland sites (Olsen et al., 2019). Images are 256×256 px. Get it from the official release (GitHub `AlexOlsen/DeepWeeds`), TensorFlow Datasets (`deep_weeds`), or Hugging Face, then arrange as:
+
+```
+data/
+  images/           # all .jpg files
+  labels.csv        # columns: Filename, Label, Species   (Label = 0..8)
+```
+
+Label map (index → species): `0 Chinee apple, 1 Lantana, 2 Parkinsonia, 3 Parthenium, 4 Prickly acacia, 5 Rubber vine, 6 Siam weed, 7 Snake weed, 8 Negative`.
+
+## Install
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt   # see note on installing torch for your platform
+```
+
+## Usage
+
+```bash
+# 1. Train (auto-detects CUDA > MPS > CPU). ResNet-50 baseline:
+python train.py --data-dir data/images --labels-csv data/labels.csv \
+    --arch resnet50 --epochs 15 --batch-size 32 --output-dir runs/resnet50
+
+# Lightweight model you'll actually deploy to the edge:
+python train.py --data-dir data/images --labels-csv data/labels.csv \
+    --arch mobilenet_v3_large --epochs 20 --output-dir runs/mnv3
+
+# 2. Export the trained model to ONNX (optionally INT8-quantized):
+python export.py --checkpoint runs/mnv3/best_model.pt --arch mobilenet_v3_large \
+    --output runs/mnv3/model.onnx --quantize
+
+# 3. Benchmark inference latency (run this on the Pi/Jetson too):
+python benchmark.py --onnx runs/mnv3/model.onnx --runs 200
+
+# 4. Bridge-to-aerial: tile a flight image into a coarse weed heatmap:
+python aerial_tiling.py --checkpoint runs/mnv3/best_model.pt \
+    --image flight.jpg --tile 256 --stride 256 --output heatmap.png --csv tiles.csv
+```
+
+Outputs land in `--output-dir`: `best_model.pt`, `metrics.json`, `confusion_matrix.png`.
+
+### Smoke test (no dataset/network needed)
+Verify the whole train → export → benchmark loop wires together on synthetic data:
+```bash
+python smoke_test.py
+```
+It generates a tiny fake dataset, trains 1 epoch with `--no-pretrained`, exports to ONNX (incl. INT8), and benchmarks — then prints `SMOKE TEST PASSED`. Requires the deps in `requirements.txt`.
+
+### Installing PyTorch
+`requirements.txt` lists `torch`/`torchvision` loosely. For CUDA or a specific build, install from the official selector at pytorch.org first, then `pip install -r requirements.txt`.
+
+## Results
+
+Trained on Apple-Silicon MPS, 20 epochs, inverse-frequency class weighting; evaluated on a held-out test split.
+
+| Model | Params | Test acc | Size | Latency (Mac CPU, ONNX Runtime) | Throughput |
+|---|---|---|---|---|---|
+| MobileNetV3-Large (fp32) | 4.2 M | **97.15 %** | 16 MB | 5.83 ms (p50 4.88, p95 8.22) | 171.6 FPS |
+| MobileNetV3-Large (INT8 dynamic) | 4.2 M | — | **4.2 MB** | 39.56 ms | 25.3 FPS |
+
+**Findings**
+- The lightweight MobileNetV3-Large (4.2 M params) reaches **97.15 %** — above the dataset paper's ResNet-50 baseline of **95.7 %** (Olsen et al., 2019), with a model ~6× smaller.
+- **Balanced per-class recall (0.95–0.99)** despite the Negative class being ~half the data — inverse-frequency class weighting (`--class-weights`) stops the majority class dominating. Weakest is Snake weed (0.95), mostly confused with Chinee apple (see confusion matrix).
+- **INT8 dynamic quantization shrinks the model ~3.8× (16 → 4.2 MB) but is *slower* on this ARM CPU** (39.6 vs 5.8 ms): the per-op quantize/dequantize overhead outweighs int8 compute for MobileNet's depthwise convs, and ONNX Runtime's CPU provider lacks fast int8 kernels here. **fp32 is the CPU deployment choice; INT8's speed win needs an accelerator (e.g. Hailo) or static quantization on VNNI-class x86.**
+- Latencies are measured on an Apple-Silicon **CPU** via ONNX Runtime. The same `benchmark.py` is meant to be re-run on a **Raspberry Pi 5** for the on-device headline number (follow-up).
+
+![Confusion matrix](docs/confusion_matrix.png)
+
+## Reference
+Olsen, A., Konovalov, D. A., Philippa, B., et al. (2019). DeepWeeds: A multiclass weed species image dataset for deep learning. *Scientific Reports, 9*(1), 2058. https://doi.org/10.1038/s41598-018-38343-3
