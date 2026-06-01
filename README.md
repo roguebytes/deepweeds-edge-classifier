@@ -2,7 +2,7 @@
 
 Train an image classifier on the **DeepWeeds** Australian rangeland-weed dataset, then export and benchmark it on a low-cost edge device (Raspberry Pi / Jetson). The focus isn't just accuracy — it's **on-device inference**: getting a model to run efficiently at the edge.
 
-> **Scope:** DeepWeeds is *whole-image classification* of *ground-level* photos — not aerial imagery and not object detection. This repo demonstrates image classification + edge deployment on a real Australian agricultural dataset. The `bridge-to-aerial` stretch goal (tile an aerial frame, classify each tile into a coarse weed heatmap) hints at how it could extend to a UAV platform.
+> **Scope:** DeepWeeds is *whole-image classification* of *ground-level* photos — not aerial imagery and not object detection. This repo demonstrates image classification + edge deployment on a real Australian agricultural dataset.
 
 ## Dataset
 
@@ -40,10 +40,6 @@ python export.py --checkpoint runs/mnv3/best_model.pt --arch mobilenet_v3_large 
 
 # 3. Benchmark inference latency (run this on the Pi/Jetson too):
 python benchmark.py --onnx runs/mnv3/model.onnx --runs 200
-
-# 4. Bridge-to-aerial: tile a flight image into a coarse weed heatmap:
-python aerial_tiling.py --checkpoint runs/mnv3/best_model.pt \
-    --image flight.jpg --tile 256 --stride 256 --output heatmap.png --csv tiles.csv
 ```
 
 Outputs land in `--output-dir`: `best_model.pt`, `metrics.json`, `confusion_matrix.png`.
@@ -71,7 +67,7 @@ Trained on Apple-Silicon MPS, 20 epochs, inverse-frequency class weighting; eval
 - The lightweight MobileNetV3-Large (4.2 M params) reaches **97.15 %** — above the dataset paper's ResNet-50 baseline of **95.7 %** (Olsen et al., 2019), with a model ~6× smaller.
 - **Balanced per-class recall (0.95–0.99)** despite the Negative class being ~half the data — inverse-frequency class weighting (`--class-weights`) stops the majority class dominating. Weakest is Snake weed (0.95), mostly confused with Chinee apple (see confusion matrix).
 - **INT8 dynamic quantization shrinks the model ~3.8× (16 → 4.2 MB) but is *slower* on this ARM CPU** (39.6 vs 5.8 ms): the per-op quantize/dequantize overhead outweighs int8 compute for MobileNet's depthwise convs, and ONNX Runtime's CPU provider lacks fast int8 kernels here. **fp32 is the CPU deployment choice; INT8's speed win needs an accelerator (e.g. Hailo) or static quantization on VNNI-class x86.**
-- Latencies are measured on an Apple-Silicon **CPU** via ONNX Runtime. The same `benchmark.py` is meant to be re-run on a **Raspberry Pi 5** for the on-device headline number (follow-up).
+- Latencies are measured on an Apple-Silicon **CPU** via ONNX Runtime. The same `benchmark.py` is meant to be re-run on a **Raspberry Pi 5** for the on-device headline number — see the step-by-step [Pi 5 CPU benchmark runbook](docs/pi5_benchmark.md) (the CPU baseline the Hailo accelerator is later compared against).
 
 ![Confusion matrix](docs/confusion_matrix.png)
 
