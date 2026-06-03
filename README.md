@@ -68,6 +68,7 @@ Trained on Apple-Silicon MPS, 20 epochs, inverse-frequency class weighting; eval
 - **Balanced per-class recall (0.95–0.99)** despite the Negative class being ~half the data — inverse-frequency class weighting (`--class-weights`) stops the majority class dominating. Weakest is Snake weed (0.95), mostly confused with Chinee apple (see confusion matrix).
 - **INT8 dynamic quantization shrinks the model ~3.8× (16 → 4.2 MB) but is *slower* on this ARM CPU** (39.6 vs 5.8 ms): the per-op quantize/dequantize overhead outweighs int8 compute for MobileNet's depthwise convs, and ONNX Runtime's CPU provider lacks fast int8 kernels here. **fp32 is the CPU deployment choice; INT8's speed win needs an accelerator (e.g. Hailo) or static quantization on VNNI-class x86.**
 - Latencies are measured on an Apple-Silicon **CPU** via ONNX Runtime. The same `benchmark.py` is meant to be re-run on a **Raspberry Pi 5** for the on-device headline number — see the step-by-step [Pi 5 CPU benchmark runbook](docs/pi5_benchmark.md) (the CPU baseline the Hailo accelerator is later compared against).
+- The INT8 speed-up that the CPU can't deliver is the job of a dedicated NPU — see the [Hailo AI HAT+ setup + benchmark runbook](docs/hailo_benchmark.md) for fitting the accelerator, compiling this model to a Hailo `.hef`, and the three-way CPU-vs-NPU results table.
 
 ![Confusion matrix](docs/confusion_matrix.png)
 
