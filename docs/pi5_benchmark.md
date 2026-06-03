@@ -10,20 +10,37 @@ Re-run the repo's `benchmark.py` on a **Raspberry Pi 5** to get the on-device he
 
 ## Phase 0 — One-time Pi setup (~30 min, mostly OS image)
 
-1. **Flash Raspberry Pi OS (64-bit, Bookworm)** with Raspberry Pi Imager. **Must be 64-bit/arm64** — `onnxruntime` has no 32-bit wheels. In the Imager's settings (⚙), pre-set hostname, SSH (key auth), Wi-Fi, and locale so you can run **headless**.
-2. **Power:** use the **official 27 W USB-C PD supply** you received. Undervoltage silently throttles the CPU and ruins benchmark numbers (and trips the flag in Phase 2).
-3. **Active Cooler fitted** (you have it). Sustained inference pins all 4 cores; without active cooling the A76 throttles within seconds and your latency drifts upward mid-run.
-4. **First boot + update:**
-   ```bash
-   sudo apt update && sudo apt full-upgrade -y
-   sudo rpi-eeprom-update -a      # latest bootloader/firmware
-   sudo reboot
-   ```
-5. **Confirm 64-bit + Python:**
-   ```bash
-   uname -m            # expect: aarch64
-   python3 --version   # Bookworm ships 3.11.x — fine for onnxruntime
-   ```
+Tickable checklist. **Have in hand:** Pi 5 (8 GB) · official 27 W USB-C PSU · Active Cooler · A1/A2 microSD ≥32 GB · Mac with SD reader. **Don't fit the Hailo HAT+ yet** — that's after the CPU baseline, so the "before" number is clean.
+
+**1 — Fit the Active Cooler** (Pi unplugged)
+- [ ] Align the two spring push-pins with the holes either side of the SoC; press each straight down until it clicks
+- [ ] Plug the fan lead into the **4-pin JST fan header** (next to USB-C)
+- *Why:* sustained inference pins all 4 cores; without active cooling the A76 throttles within seconds and latency drifts mid-run.
+
+**2 — Flash the card** (on the Mac)
+- [ ] Install Imager: `brew install --cask raspberry-pi-imager`
+- [ ] Imager → **Device:** Raspberry Pi 5 · **OS:** *Raspberry Pi OS (64-bit)* · **Storage:** the card
+  - **Must be 64-bit/arm64** — `onnxruntime` has no 32-bit wheels. (Lite is fine for headless.)
+- [ ] **Edit Settings** before writing: hostname `pi5` · username+password · Wi-Fi SSID/password + country **AU** · locale **Australia** · **Services → Enable SSH → public-key** (paste `~/.ssh/id_ed25519.pub`; `ssh-keygen -t ed25519` if needed)
+- [ ] **Write** → verify → eject
+
+**3 — First boot**
+- [ ] Card into Pi → connect the **official 27 W PSU** (no power button — boots on power). *Undervoltage from a weaker supply silently throttles the CPU and ruins the numbers.*
+- [ ] Wait ~60–90 s (first boot expands the filesystem + joins Wi-Fi)
+
+**4 — Connect** (from the Mac)
+- [ ] `ssh <user>@pi5.local` (accept the host key); if `.local` won't resolve, find the IP on your router
+
+**5 — Update firmware + OS**
+- [ ] `sudo apt update && sudo apt full-upgrade -y`
+- [ ] `sudo rpi-eeprom-update -a` *(latest bootloader/firmware)*
+- [ ] `sudo reboot`
+
+**6 — Health check** (SSH back in)
+- [ ] `uname -m` → **`aarch64`** (confirms 64-bit)
+- [ ] `vcgencmd get_throttled` → **`throttled=0x0`** (no undervoltage/throttle)
+- [ ] `vcgencmd measure_temp` → idle ~40–50 °C · `free -h` → ~8 GB · `python3 --version` → 3.11.x
+- *If `get_throttled` ≠ `0x0`: stop and fix it (PSU/cable = undervoltage, cooler seating = thermal) before trusting any benchmark.*
 
 ---
 
