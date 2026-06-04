@@ -25,34 +25,55 @@ Fit the **Hailo AI HAT+** to the Pi 5, run the DeepWeeds classifier on the NPU, 
 
 ## Phase 2 — Install the Hailo software (on the Pi)
 
+**First, confirm the HAT is on the PCIe bus** — catches a misseated/backwards FFC ribbon *before* you install anything (`lspci` needs no driver):
 ```bash
-sudo apt update && sudo apt full-upgrade -y
-sudo apt install hailo-all          # kernel driver + firmware + HailoRT + Tappas
+lspci | grep -i hailo
+# want: 0001:01:00.0 Co-processor: Hailo Technologies Ltd. Hailo-8 AI Processor (rev 01)
+```
+Nothing shown? Power down, re-seat the FFC at **both** ends (orientation is the #1 gotcha), retry.
+
+**Then install the stack and reboot:**
+```bash
+sudo apt update && sudo apt install -y hailo-all   # kernel driver + firmware + HailoRT + Tappas
 sudo reboot
 ```
 
-Verify after reboot:
+**Verify after reboot:**
 ```bash
-hailortcli fw-control identify      # device, firmware, and Device Architecture
-lspci | grep -i hailo               # PCIe enumeration
-dmesg | grep -i hailo               # driver load
+hailortcli fw-control identify
 ```
-- **Confirmed hardware: Hailo-8 (26 TOPS)** — `identify` should report **Device Architecture `HAILO8`**. This sets the compile **`--hw-arch hailo8`** flag in Phase 4. (The 13-TOPS variant would report `HAILO8L`.)
-- **PCIe Gen 3 is auto-enabled on the AI HAT+** — no `config.txt`/`raspi-config` change needed (this differs from the older M.2 AI Kit). Sanity-check the link if curious: `sudo lspci -vv | grep -i LnkSta` → expect **8GT/s** (Gen3).
-- Keep a note of `hailortcli --version` — the **compiler suite version in Phase 4 must match this major version**, or the `.hef` won't load.
+Confirmed-good output on this rig (2026-06-05):
+```
+Firmware Version: 4.23.0 (release,app,extended context switch buffer)
+Board Name: Hailo-8
+Device Architecture: HAILO8
+```
+- **Hailo-8 (26 TOPS)** → `Device Architecture: HAILO8` → sets the compile **`--hw-arch hailo8`** flag in Phase 4. (The 13-TOPS variant reports `HAILO8L`.)
+- **Note the HailoRT/firmware version (here 4.23.0 → HailoRT 4.x).** The Phase 4 compiler suite **and** any precompiled HEF you run **must be HailoRT 4.x-compatible**, or the `.hef` won't load (`hailortcli --version` shows the runtime).
+- **PCIe Gen 3 auto-enables on the AI HAT+** — no `config.txt`/`raspi-config` change (differs from the older M.2 AI Kit). Check the link if curious: `sudo lspci -vv | grep -i LnkSta` → expect **8GT/s** (Gen3).
 
-## Phase 3 — Fast sanity number (precompiled Model Zoo HEF) — a Hailo FPS *today*
+## Phase 3 — Fast sanity number (no compiling) — a Hailo FPS *today*
 
-You don't need to compile anything to prove the board and get a ballpark accelerator number.
+You don't need to compile anything to prove the board and get a ballpark — **the `hailo-all` install ships demo HEFs already**, no download needed:
+```bash
+find / -name '*.hef' 2>/dev/null      # typically under /usr/share/hailo-models/
+```
 
-1. Download a **precompiled MobileNet `.hef`** from the [Hailo Model Zoo](https://github.com/hailo-ai/hailo_model_zoo) — the **`hailo8`** build (your 26-TOPS arch).
-2. Benchmark it on-device:
-   ```bash
-   hailortcli benchmark mobilenet_v3.hef     # auto-generates inputs → FPS + latency
-   ```
-- **Reality check on FPS:** the Pi 5 exposes **PCIe Gen3 ×1 (single lane)**; Hailo's official Model Zoo benchmarks use multi-lane rigs, so your numbers will be **lower than the headline** — that's expected. **Quote your own measured FPS, never the Model Zoo's.**
+**Match the arch suffix to your chip** — a mismatched HEF just errors ("compiled for X, device is Y"):
+- **`_h8`** = Hailo-**8** (26 TOPS) ← run these
+- `_h8l` = Hailo-8**L** (13 TOPS) · `_h10` = Hailo-**10** ← won't load on a Hailo-8
 
-This confirms the HAT+ works end-to-end and gives an early "accelerator works" datapoint while you set up the real compile.
+Benchmark one (auto-generates inputs → FPS + latency):
+```bash
+hailortcli benchmark /usr/share/hailo-models/yolov6n_h8.hef
+```
+
+**Measured on this rig (Pi 5 + Hailo-8, 2026-06-05):** `yolov6n_h8` → **586 FPS** (hw-only *and* streaming) · **3.18 ms** HW latency. No power telemetry (the Pi 5 + AI HAT+ doesn't expose it over PCIe).
+- **streaming ≈ hw-only** → the **PCIe Gen3 ×1** link isn't bottlenecking this small model (bigger/higher-res models may show a gap).
+- ~10–20× real-time for a nano detector — confirms big headroom for the YOLO-class autonomy/maritime demos.
+- ⚠️ **YOLOv6n, not DeepWeeds** — an "NPU validated + detector headroom" datapoint, **not** the classifier comparison. The apples-to-apples DeepWeeds figure needs *your* MobileNetV3 from Phase 4.
+
+*(Alternative: download a precompiled HEF from the [Hailo Model Zoo](https://github.com/hailo-ai/hailo_model_zoo) — pick the `hailo8` + HailoRT-4.x build. The preinstalled set is the faster path.)*
 
 ## Phase 4 — Compile YOUR DeepWeeds model → `.hef` (the real comparison)
 
