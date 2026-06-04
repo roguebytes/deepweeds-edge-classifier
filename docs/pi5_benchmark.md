@@ -55,7 +55,10 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install --upgrade pip
 pip install onnxruntime numpy          # that's all benchmark.py imports
 python -c "import onnxruntime as ort; print(ort.__version__, ort.get_available_providers())"
-# expect a version + ['CPUExecutionProvider']  (CPU-only on the Pi — correct for the baseline)
+# expect a version + a provider list containing 'CPUExecutionProvider' (CPU-only on the Pi — correct).
+# ORT >=1.26 also lists 'AzureExecutionProvider' (a harmless stub) and prints two
+# "GetGpuDevices ... Failed to detect device /sys/class/drm/card*" warnings on the Pi
+# (it probes for a PCIe GPU that isn't there) — both are noise, CPU inference is unaffected.
 ```
 
 ## Phase 2 — Put the Pi in a fair, reproducible state
@@ -64,9 +67,9 @@ Benchmarks are only comparable if the CPU isn't throttling and isn't idling down
 
 ```bash
 # 1) Pin the CPU governor to performance (stops on-demand frequency scaling skewing latency)
-sudo apt install -y cpufrequtils
-sudo cpufreq-set -g performance
-cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor   # expect: performance
+#    (cpufrequtils was dropped from current Raspberry Pi OS — write sysfs directly, no package needed)
+echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
+cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor   # expect: performance (×4 cores)
 
 # 2) Check thermals + throttling
 vcgencmd measure_temp        # keep well under 80°C with the Active Cooler

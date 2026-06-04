@@ -63,11 +63,18 @@ Trained on Apple-Silicon MPS, 20 epochs, inverse-frequency class weighting; eval
 | MobileNetV3-Large (fp32) | 4.2 M | **97.15 %** | 16 MB | 5.83 ms (p50 4.88, p95 8.22) | 171.6 FPS |
 | MobileNetV3-Large (INT8 dynamic) | 4.2 M | — | **4.2 MB** | 39.56 ms | 25.3 FPS |
 
+**On-device — Raspberry Pi 5** (Cortex-A76 ×4, ONNX Runtime CPU; best of a 1/2/4-thread sweep, 300 runs after 30 warmup, `governor=performance`, no throttling):
+
+| Model | Precision | Latency (mean / p95) | Throughput | Threads |
+|---|---|---|---|---|
+| MobileNetV3-Large | fp32 | 14.23 ms / 14.54 ms | **70.3 FPS** | 4 |
+| MobileNetV3-Large | INT8 dynamic | 68.33 ms / 68.55 ms | 14.6 FPS | 4 |
+
 **Findings**
 - The lightweight MobileNetV3-Large (4.2 M params) reaches **97.15 %** — above the dataset paper's ResNet-50 baseline of **95.7 %** (Olsen et al., 2019), with a model ~6× smaller.
 - **Balanced per-class recall (0.95–0.99)** despite the Negative class being ~half the data — inverse-frequency class weighting (`--class-weights`) stops the majority class dominating. Weakest is Snake weed (0.95), mostly confused with Chinee apple (see confusion matrix).
 - **INT8 dynamic quantization shrinks the model ~3.8× (16 → 4.2 MB) but is *slower* on this ARM CPU** (39.6 vs 5.8 ms): the per-op quantize/dequantize overhead outweighs int8 compute for MobileNet's depthwise convs, and ONNX Runtime's CPU provider lacks fast int8 kernels here. **fp32 is the CPU deployment choice; INT8's speed win needs an accelerator (e.g. Hailo) or static quantization on VNNI-class x86.**
-- Latencies are measured on an Apple-Silicon **CPU** via ONNX Runtime. The same `benchmark.py` is meant to be re-run on a **Raspberry Pi 5** for the on-device headline number — see the step-by-step [Pi 5 CPU benchmark runbook](docs/pi5_benchmark.md) (the CPU baseline the Hailo accelerator is later compared against).
+- **On the deployment target (Pi 5, Cortex-A76), fp32 reaches 70.3 FPS while INT8 dynamic is ~4.8× *slower* (14.6 FPS)** — the same ARM-CPU effect seen on the Mac, now confirmed on real hardware (run-to-run std < 0.2 ms at `governor=performance`, no throttling). See the [Pi 5 CPU benchmark runbook](docs/pi5_benchmark.md). This fp32 result is the **CPU baseline** the Hailo accelerator is measured against.
 - The INT8 speed-up that the CPU can't deliver is the job of a dedicated NPU — see the [Hailo AI HAT+ setup + benchmark runbook](docs/hailo_benchmark.md) for fitting the accelerator, compiling this model to a Hailo `.hef`, and the three-way CPU-vs-NPU results table.
 
 ![Confusion matrix](docs/confusion_matrix.png)
