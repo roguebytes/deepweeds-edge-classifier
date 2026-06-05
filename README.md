@@ -70,12 +70,20 @@ Trained on Apple-Silicon MPS, 20 epochs, inverse-frequency class weighting; eval
 | MobileNetV3-Large | fp32 | 14.23 ms / 14.54 ms | **70.3 FPS** | 4 |
 | MobileNetV3-Large | INT8 dynamic | 68.33 ms / 68.55 ms | 14.6 FPS | 4 |
 
+**On-device — Raspberry Pi 5 + Hailo-8 AI HAT+** (26 TOPS NPU, INT8 static, `hailortcli benchmark`):
+
+| Model | Precision | Latency | Throughput | vs Pi CPU fp32 |
+|---|---|---|---|---|
+| MobileNetV3-Large | INT8 static (Hailo) | 7.99 ms | **1002 FPS** | **~14×** |
+
+> **Throughput is final and verified.** Post-quantization *accuracy* validation is in progress: the model was first compiled through the Hailo Model Zoo `mobilenet_v3` config, whose TensorFlow `[-1,1]` input normalization differs from this model's PyTorch ImageNet preprocessing — aligning that (plus MobileNetV3's quantization-sensitive squeeze-excite / hard-swish blocks) is the remaining step. FPS is unaffected.
+
 **Findings**
 - The lightweight MobileNetV3-Large (4.2 M params) reaches **97.15 %** — above the dataset paper's ResNet-50 baseline of **95.7 %** (Olsen et al., 2019), with a model ~6× smaller.
 - **Balanced per-class recall (0.95–0.99)** despite the Negative class being ~half the data — inverse-frequency class weighting (`--class-weights`) stops the majority class dominating. Weakest is Snake weed (0.95), mostly confused with Chinee apple (see confusion matrix).
 - **INT8 dynamic quantization shrinks the model ~3.8× (16 → 4.2 MB) but is *slower* on this ARM CPU** (39.6 vs 5.8 ms): the per-op quantize/dequantize overhead outweighs int8 compute for MobileNet's depthwise convs, and ONNX Runtime's CPU provider lacks fast int8 kernels here. **fp32 is the CPU deployment choice; INT8's speed win needs an accelerator (e.g. Hailo) or static quantization on VNNI-class x86.**
 - **On the deployment target (Pi 5, Cortex-A76), fp32 reaches 70.3 FPS while INT8 dynamic is ~4.8× *slower* (14.6 FPS)** — the same ARM-CPU effect seen on the Mac, now confirmed on real hardware (run-to-run std < 0.2 ms at `governor=performance`, no throttling). See the [Pi 5 CPU benchmark runbook](docs/pi5_benchmark.md). This fp32 result is the **CPU baseline** the Hailo accelerator is measured against.
-- The INT8 speed-up that the CPU can't deliver is the job of a dedicated NPU — see the [Hailo AI HAT+ setup + benchmark runbook](docs/hailo_benchmark.md) for fitting the accelerator, compiling this model to a Hailo `.hef`, and the three-way CPU-vs-NPU results table.
+- **The INT8 speed-up the CPU can't deliver is the NPU's job: on the Pi 5 + Hailo-8, this model runs at 1002 FPS (7.99 ms) — ~14× the Pi's fp32 CPU and ~68× its INT8-dynamic CPU.** The INT8 that's *slower* on the CPU is *fastest* on the accelerator — the whole thesis, on hardware. See the [Hailo AI HAT+ runbook](docs/hailo_benchmark.md). (Post-quant accuracy validation in progress — see the note above.)
 
 ![Confusion matrix](docs/confusion_matrix.png)
 

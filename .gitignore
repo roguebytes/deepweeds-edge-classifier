@@ -8,9 +8,13 @@ venv/
 # Data & artifacts
 data/
 runs/
+calib/
+testset/
 *.zip
 *.pt
 *.onnx
+*.hef
+*.har
 *.png
 !docs/*.png
 
