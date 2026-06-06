@@ -8,7 +8,7 @@ venv/
 # Data & artifacts
 data/
 runs/
-calib/
+calib*/
 testset/
 *.zip
 *.pt

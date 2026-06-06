@@ -70,20 +70,22 @@ Trained on Apple-Silicon MPS, 20 epochs, inverse-frequency class weighting; eval
 | MobileNetV3-Large | fp32 | 14.23 ms / 14.54 ms | **70.3 FPS** | 4 |
 | MobileNetV3-Large | INT8 dynamic | 68.33 ms / 68.55 ms | 14.6 FPS | 4 |
 
-**On-device — Raspberry Pi 5 + Hailo-8 AI HAT+** (26 TOPS NPU, INT8 static, `hailortcli benchmark`):
+**On-device — Raspberry Pi 5 + Hailo-8 AI HAT+** (26 TOPS NPU, INT8 static, Hailo Dataflow Compiler with QAT, on-chip ImageNet normalization, 1152-image class-balanced calibration set):
 
-| Model | Precision | Latency | Throughput | vs Pi CPU fp32 |
-|---|---|---|---|---|
-| MobileNetV3-Large | INT8 static (Hailo) | 7.99 ms | **1002 FPS** | **~14×** |
+| Model | Params | Top-1 (full test split, 2627 imgs) | Latency | Throughput | vs Pi CPU fp32 |
+|---|---|---|---|---|---|
+| MobileNetV3-Large | 4.2 M | partial — quantization-degraded¹ | 7.99 ms | 1002 FPS | ~14× |
+| **MobileNetV2** | **2.24 M** | **96.00 %** (Δ −0.99 pp vs FP32) | **1.82 ms** | **2219 FPS** | **~32×** |
 
-> **Throughput is final and verified.** Post-quantization *accuracy* validation is in progress: the model was first compiled through the Hailo Model Zoo `mobilenet_v3` config, whose TensorFlow `[-1,1]` input normalization differs from this model's PyTorch ImageNet preprocessing — aligning that (plus MobileNetV3's quantization-sensitive squeeze-excite / hard-swish blocks) is the remaining step. FPS is unaffected.
+> ¹ MobileNetV3's squeeze-excite + hard-swish blocks have wide activation ranges that per-tensor INT8 cannot represent cleanly; QAT improved SNR from 1.15 dB → 3.15 dB but accuracy remained degenerate. **The deployed model is MobileNetV2** (architecturally simpler, designed before SE/hard-swish), trained on the same DeepWeeds split with the same recipe: **96.99 %** FP32 → **96.00 %** INT8 on the Hailo (SNR 19.71 dB, full test set, 9-class balanced ≥0.90 per class). The architectural switch was an engineering choice — chase quantization-hostile gymnastics, or pick a quant-friendly backbone of comparable accuracy. We chose the latter.
 
 **Findings**
 - The lightweight MobileNetV3-Large (4.2 M params) reaches **97.15 %** — above the dataset paper's ResNet-50 baseline of **95.7 %** (Olsen et al., 2019), with a model ~6× smaller.
 - **Balanced per-class recall (0.95–0.99)** despite the Negative class being ~half the data — inverse-frequency class weighting (`--class-weights`) stops the majority class dominating. Weakest is Snake weed (0.95), mostly confused with Chinee apple (see confusion matrix).
 - **INT8 dynamic quantization shrinks the model ~3.8× (16 → 4.2 MB) but is *slower* on this ARM CPU** (39.6 vs 5.8 ms): the per-op quantize/dequantize overhead outweighs int8 compute for MobileNet's depthwise convs, and ONNX Runtime's CPU provider lacks fast int8 kernels here. **fp32 is the CPU deployment choice; INT8's speed win needs an accelerator (e.g. Hailo) or static quantization on VNNI-class x86.**
 - **On the deployment target (Pi 5, Cortex-A76), fp32 reaches 70.3 FPS while INT8 dynamic is ~4.8× *slower* (14.6 FPS)** — the same ARM-CPU effect seen on the Mac, now confirmed on real hardware (run-to-run std < 0.2 ms at `governor=performance`, no throttling). See the [Pi 5 CPU benchmark runbook](docs/pi5_benchmark.md). This fp32 result is the **CPU baseline** the Hailo accelerator is measured against.
-- **The INT8 speed-up the CPU can't deliver is the NPU's job: on the Pi 5 + Hailo-8, this model runs at 1002 FPS (7.99 ms) — ~14× the Pi's fp32 CPU and ~68× its INT8-dynamic CPU.** The INT8 that's *slower* on the CPU is *fastest* on the accelerator — the whole thesis, on hardware. See the [Hailo AI HAT+ runbook](docs/hailo_benchmark.md). (Post-quant accuracy validation in progress — see the note above.)
+- **The INT8 win the CPU can't deliver is the NPU's job: on the Pi 5 + Hailo-8, MobileNetV2 runs at 2219 FPS at 96.00 % top-1 (Δ −0.99 pp from FP32) — ~32× the Pi's fp32 CPU.** See the [Hailo AI HAT+ runbook](docs/hailo_benchmark.md).
+- **Architecture *choice* matters more than calibration tuning for quantization.** Initial deployment used MobileNetV3-Large (4.2 M params, 97.15 % FP32). Despite a full QAT recipe — 1152-image class-balanced calibration, bias correction, finetune — the V3 INT8 model's output-layer SNR plateaued at **3.15 dB** and accuracy collapsed (the squeeze-excite + hard-swish stack quantizes poorly at per-tensor INT8). Switching to MobileNetV2 (2.24 M, no SE / no hard-swish) gave **SNR 19.71 dB** (>6× higher) with the *same* recipe — and an INT8 model that matches FP32 to within a percentage point. Reproducible artifacts: [`make_calib.py`](make_calib.py), [`hailo_native_eval.py`](hailo_native_eval.py), [`hailo_compile.py`](hailo_compile.py), [`hailo_accuracy.py`](hailo_accuracy.py).
 
 ![Confusion matrix](docs/confusion_matrix.png)
 
